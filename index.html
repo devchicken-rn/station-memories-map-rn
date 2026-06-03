@@ -121,6 +121,17 @@
             </div>
             <div class="modal-body">
                 <div id="modal-window-desc" class="modal-desc"></div>
+                
+                <div id="data-format-selector" style="margin-bottom: 12px; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 4px; border: 1px solid #4e54c8; display: none;">
+                    <span style="font-size: 11px; color: #ffde59; display: block; margin-bottom: 4px; font-weight: bold;">📋 データ形式の選択</span>
+                    <label style="font-size: 13px; cursor: pointer; color: #fff; margin-right: 16px;">
+                        <input type="radio" name="modal-data-format" value="default" checked> アプリ標準形式
+                    </label>
+                    <label style="font-size: 13px; cursor: pointer; color: #00ffff;">
+                        <input type="radio" name="modal-data-format" value="ekimemomap2"> 駅メモマップ2形式
+                    </label>
+                </div>
+
                 <textarea id="txt-data-io" placeholder="ここにデータを貼り付けてください..."></textarea>
             </div>
             <div class="modal-footer">

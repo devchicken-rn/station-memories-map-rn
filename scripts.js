@@ -48,6 +48,10 @@ let loadedPolylinesCount = 0;
 let isDrawingStarted = false; 
 let isAppInitialized = false;
 
+// --- 🌟 駅メモマップ2 連携用辞書 ---
+let ownToEkimemoMap = {}; 
+let ekimemoToOwnMap = {};
+
 // --- ↩️ 操作履歴（Undo）管理機能 ---
 const MAX_HISTORY = 20; 
 let historyStack = [];
@@ -102,7 +106,6 @@ function updateRegisterMode(mode) {
     let targetStationRenderer = stationRenderer;
     
     if (mode === 'view') {
-        // 👁️ 眺めるモード：最前面ペインをONにし、駅と路線の描画先を同じCanvasに統合する
         viewPane.style.zIndex = 430;
         linePane.style.zIndex = 400;
         stationPane.style.zIndex = 400;
@@ -118,7 +121,6 @@ function updateRegisterMode(mode) {
         viewPane.style.zIndex = 400;
     }
 
-    // 🗺️ 路線レイヤーの Canvas レンダラーを動的に差し替え
     allLines.forEach(line => {
         const geojsonLayer = lineLayers[line.code];
         if (geojsonLayer) {
@@ -129,7 +131,6 @@ function updateRegisterMode(mode) {
                     needRefresh = true;
                 }
             });
-            // レンダラーが変わった場合のみ、マップから脱着して再描画を促す
             if (needRefresh && map.hasLayer(geojsonLayer)) {
                 map.removeLayer(geojsonLayer);
                 map.addLayer(geojsonLayer);
@@ -137,7 +138,6 @@ function updateRegisterMode(mode) {
         }
     });
 
-    // 📍 駅レイヤーの Canvas レンダラーを動的に差し替え
     stationLayerGroup.eachLayer(marker => {
         if (marker.options.renderer !== targetStationRenderer) {
             marker.removeFrom(stationLayerGroup);
@@ -151,7 +151,7 @@ function checkAppReady() {
     if (isLinesLoaded && isStationsLoaded && isVoronoiLoaded && loadedPolylinesCount >= totalPolylinesToLoad) {
         if (!isAppInitialized) {
             isAppInitialized = true;
-            updateRegisterMode('view'); // 👁️ 初期化時も眺めるモードで起動
+            updateRegisterMode('view');
             refreshAllLines();
 
             updateStatusText('描画キャッシュ構築中...');
@@ -298,7 +298,7 @@ function updateSidebarList() {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = isConquered;
-        checkbox.disabled = (registerMode === 'view'); // 眺めるモードの時はロック
+        checkbox.disabled = (registerMode === 'view'); 
         checkbox.addEventListener('change', (e) => { e.stopPropagation(); toggleLine(line.code); });
         const nameText = document.createTextNode(line.name);
         titleRow.appendChild(checkbox);
@@ -358,7 +358,7 @@ function updateSidebarList() {
                 const stCheck = document.createElement('input');
                 stCheck.type = 'checkbox';
                 stCheck.checked = checkStationSet.has(st.code);
-                stCheck.disabled = (registerMode === 'view'); // 眺めるモードの時はロック
+                stCheck.disabled = (registerMode === 'view'); 
                 stCheck.addEventListener('change', () => { toggleStationCheckIn(st.code); });
                 const stNameSpan = document.createElement('span');
                 stNameSpan.textContent = st.name;
@@ -431,7 +431,7 @@ function getLineStyle(conquered, line) {
 }
 
 function toggleLine(lineCode) {
-    if (registerMode === 'view') return; // 眺めるモード時は拒絶
+    if (registerMode === 'view') return; 
     conqueredLines = JSON.parse(localStorage.getItem('conqueredLines')) || [];
     conqueredStations = JSON.parse(localStorage.getItem('conqueredStations')) || [];
     const line = allLines.find(l => l.code === lineCode);
@@ -453,7 +453,7 @@ function toggleLine(lineCode) {
 }
 
 function toggleStationCheckIn(stationCode) {
-    if (registerMode === 'view') return; // 眺めるモード時は拒絶
+    if (registerMode === 'view') return; 
     conqueredStations = JSON.parse(localStorage.getItem('conqueredStations')) || [];
     conqueredLines = JSON.parse(localStorage.getItem('conqueredLines')) || [];
     const station = allStations.find(s => s.code === stationCode);
@@ -482,7 +482,7 @@ function toggleStationCheckIn(stationCode) {
 }
 
 function togglePrefectures(prefCode) {
-    if (registerMode === 'view') return; // 眺めるモード時は拒絶
+    if (registerMode === 'view') return; 
     conqueredStations = JSON.parse(localStorage.getItem('conqueredStations')) || [];
     conqueredLines = JSON.parse(localStorage.getItem('conqueredLines')) || [];
     
@@ -543,6 +543,39 @@ function syncLegacyData() {
     }
 }
 
+// 🌟 登録されている駅の状況から、制覇済みの路線を自動で判定・追加する関数
+function recalculateConqueredLines() {
+    if (allLines.length === 0 || allStations.length === 0) return;
+
+    const stationCheckSet = new Set(conqueredStations);
+    let updated = false;
+
+    allLines.forEach(line => {
+        // すでに制覇済みの路線は計算をスキップ
+        if (conqueredLines.includes(line.code)) return;
+
+        // その路線に属する全駅のコードを取得
+        const lineStationCodes = allStations.filter(s => s.lines && s.lines.includes(line.code)).map(s => s.code);
+        
+        // 路線に駅データがない場合はスキップ
+        if (lineStationCodes.length === 0) return;
+
+        // 路線のすべての駅が、チェック済み駅(stationCheckSet)に含まれているかを判定
+        const isAllConquered = lineStationCodes.every(code => stationCheckSet.has(code));
+
+        if (isAllConquered) {
+            conqueredLines.push(line.code);
+            updated = true;
+        }
+    });
+
+    // 新しく制覇された路線があった場合のみ、保存を更新する
+    if (updated) {
+        localStorage.setItem('conqueredLines', JSON.stringify(conqueredLines));
+        console.log('インポートにより、新しい制覇路線が自動追加されました。');
+    }
+}
+
 function getVoronoiStyle(isCheckIn) {
     if (!isCheckIn) {
         return { color: '#333659', weight: 0.5, fillColor: 'transparent', fillOpacity: 0 };
@@ -560,7 +593,6 @@ function updateVoronoiStyles() {
 }
 
 function refreshAllLines() {
-    // 💡 路線操作・閲覧モード（眺める、路線強調、路線一括登録）の時は当たり判定の許容ピクセル（tolerance）を大きく拡張
     if (currentMode === 'line-only' || registerMode === 'line' || registerMode === 'view') {
         lineRenderer.options.tolerance = 15; 
         if (typeof viewRenderer !== 'undefined') viewRenderer.options.tolerance = 15;
@@ -588,7 +620,6 @@ function refreshAllLines() {
     backgroundLayers.forEach(layer => layer.bringToFront());
     foregroundLayers.forEach(layer => layer.bringToFront());
 
-    // 👁️ 眺めるモードの時は同一 Canvas 内に混在するため、路線の重なりを整理した直後に「駅」を最前面に持ってくる
     if (registerMode === 'view') {
         stationLayerGroup.eachLayer(marker => {
             if (typeof marker.bringToFront === 'function') {
@@ -702,12 +733,65 @@ function getStationStyle(isClosed, zoom, isCheckIn) {
     return { radius: radius, fillColor: markerColor, color: borderColor, weight: weight, opacity: opacity, fillOpacity: fillOpacity };
 }
 
+// 🌟 駅メモマップ2 紐付け辞書生成関数
+async function initEkimemoMap2Linkage(ownStations) {
+    try {
+        const response = await fetch('ekimemomap2/stations_ekimemomap2.csv');
+        if (!response.ok) throw new Error('駅メモマップ2のデータファイルが見つかりません');
+        const csvText = await response.text();
+        
+        const lines = csvText.split(/\r?\n/);
+        const ekimemoStations = [];
+        
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const [cd, name, lat, lng] = line.split(',');
+            if (!cd || !name) continue;
+            ekimemoStations.push({ cd: cd.trim(), name: name.trim(), lat: parseFloat(lat), lng: parseFloat(lng) });
+        }
+        
+        ekimemoStations.forEach(emStation => {
+            let matched = ownStations.find(s => String(s.code) === emStation.cd);
+            
+            if (!matched) {
+                const nameMatches = ownStations.filter(s => s.name === emStation.name);
+                if (nameMatches.length === 1) {
+                    matched = nameMatches[0];
+                } else if (nameMatches.length > 1) {
+                    let minDistance = Infinity;
+                    nameMatches.forEach(ownStation => {
+                        const dist = Math.pow(ownStation.lat - emStation.lat, 2) + Math.pow(ownStation.lng - emStation.lng, 2);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            matched = ownStation;
+                        }
+                    });
+                }
+            }
+            
+            if (matched) {
+                ownToEkimemoMap[matched.code] = emStation.cd;
+                ekimemoToOwnMap[emStation.cd] = matched.code;
+            }
+        });
+        
+        console.log(`🔗 駅メモマップ2連携の初期化成功。紐付け完了: ${Object.keys(ownToEkimemoMap).length} 駅`);
+    } catch (e) {
+        console.warn('駅メモマップ2形式の連携初期化をスキップしました:', e.message);
+    }
+}
+
 function loadStations() {
     fetch(stationListUrl).then(response => response.json()).then(stations => {
         updateStatusText('駅情報読み込み中...');
         allStations = stations; 
         isStationsLoaded = true; 
         syncLegacyData();
+        
+        // 🌟 ここで駅メモマップ2の紐付けを非同期実行
+        initEkimemoMap2Linkage(stations);
+
         const currentZoom = map.getZoom();
         const checkStationSet = new Set(conqueredStations);
 
@@ -786,7 +870,7 @@ function loadStations() {
 
 map.on('dblclick', function(e) {
     if (allStations.length === 0) return;
-    if (registerMode === 'line' || registerMode === 'view') return; // 👁️ 眺めるモードの時はマップダブルクリックも無効化
+    if (registerMode === 'line' || registerMode === 'view') return; 
 
     const clat = e.latlng.lat;
     const clng = e.latlng.lng;
@@ -906,17 +990,49 @@ function closeModal() {
 }
 document.getElementById('btn-modal-cancel').addEventListener('click', closeModal);
 
+// 🌟 モーダル内ラジオボタンのリアルタイム変更イベント
+document.querySelectorAll('input[name="modal-data-format"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+        if (modalMode === 'export') {
+            renderExportData();
+        }
+    });
+});
+
+// 🌟 エクスポートデータの生成とテキストエリアへの反映
+function renderExportData() {
+    const formatInput = document.querySelector('input[name="modal-data-format"]:checked');
+    const isEkimemoFormat = formatInput ? formatInput.value === 'ekimemomap2' : false;
+    
+    if (isEkimemoFormat) {
+        // マップ2形式 (駅コードの配列を文字列化)
+        const ekimemoCodes = conqueredStations.map(ownCode => {
+            return ownToEkimemoMap[ownCode] || String(ownCode);
+        });
+        txtDataIO.value = JSON.stringify(ekimemoCodes);
+    } else {
+        // アプリ標準形式
+        const exportData = {
+            lines: conqueredLines,
+            stations: conqueredStations
+        };
+        txtDataIO.value = JSON.stringify(exportData, null, 2);
+    }
+}
+
 document.getElementById('btn-export-show').addEventListener('click', () => {
     modalMode = 'export';
     modalTitle.textContent = '📥 データの書き出し (エクスポート)';
-    modalDesc.textContent = '下のテキストボックスの内容をすべてコピーして、メモ帳などに保存してください。';
+    modalDesc.textContent = '形式を選択し、下のテキストボックスの内容をすべてコピーして保存してください。';
     
-    const exportData = {
-        lines: conqueredLines,
-        stations: conqueredStations
-    };
-    
-    txtDataIO.value = JSON.stringify(exportData, null, 2);
+    // 形式選択ラジオボタンを表示し、デフォルトに戻す
+    const formatSelector = document.getElementById('data-format-selector');
+    if (formatSelector) formatSelector.style.display = 'block';
+    const defaultRadio = document.querySelector('input[name="modal-data-format"][value="default"]');
+    if (defaultRadio) defaultRadio.checked = true;
+
+    txtDataIO.readOnly = true;
+    renderExportData();
     
     btnModalExecute.textContent = '📋 クリップボードにコピー';
     btnModalExecute.className = 'btn-modal-action btn-modal-copy';
@@ -934,7 +1050,15 @@ document.getElementById('btn-export-show').addEventListener('click', () => {
 document.getElementById('btn-import-show').addEventListener('click', () => {
     modalMode = 'import';
     modalTitle.textContent = '📤 データの読み込み (インポート)';
-    modalDesc.textContent = '過去にエクスポートしたテキストを貼り付けて「データを復元する」を押してください。現在のデータは上書きされます。';
+    modalDesc.textContent = '形式を選択し、過去のデータを貼り付けて「データを復元する」を押してください。';
+    
+    // 形式選択ラジオボタンを表示し、デフォルトに戻す
+    const formatSelector = document.getElementById('data-format-selector');
+    if (formatSelector) formatSelector.style.display = 'block';
+    const defaultRadio = document.querySelector('input[name="modal-data-format"][value="default"]');
+    if (defaultRadio) defaultRadio.checked = true;
+
+    txtDataIO.readOnly = false;
     txtDataIO.value = '';
     
     btnModalExecute.textContent = '⚙️ データを復元する';
@@ -945,6 +1069,7 @@ document.getElementById('btn-import-show').addEventListener('click', () => {
     dataModal.classList.add('open');
 });
 
+// 🌟 [実行] / [コピー] ボタンの処理
 btnModalExecute.addEventListener('click', () => {
     if (modalMode === 'export') {
         txtDataIO.select();
@@ -979,25 +1104,52 @@ btnModalExecute.addEventListener('click', () => {
         }
         
         try {
-            const importedData = JSON.parse(rawText);
-            if (!importedData || !Array.isArray(importedData.lines) || !Array.isArray(importedData.stations)) {
-                throw new Error('データ構造が正しくありません。');
-            }
-            
-            if (confirm(`路線データ: ${importedData.lines.length}件\n駅データ: ${importedData.stations.length}件\n\nこのデータをマップに読み込みますか？現在の記録は上書きされます。`)) {
+            const parsedData = JSON.parse(rawText);
+            const formatInput = document.querySelector('input[name="modal-data-format"]:checked');
+            const isEkimemoFormat = formatInput ? formatInput.value === 'ekimemomap2' : false;
+
+            let newStations = [];
+            let newLines = [];
+
+            if (isEkimemoFormat) {
+                // マップ2形式 (配列のインポートとマージ)
+                if (!Array.isArray(parsedData)) throw new Error('マップ2形式は配列である必要があります。');
+                
+                parsedData.forEach(emCodeStr => {
+                    const emCode = String(emCodeStr);
+                    const ownCode = ekimemoToOwnMap[emCode] ? Number(ekimemoToOwnMap[emCode]) : Number(emCode);
+                    if (!isNaN(ownCode)) newStations.push(ownCode);
+                });
+                
+                if (!confirm(`駅メモマップ2のデータから ${newStations.length}件の駅を読み込みますか？\n(現在の記録にマージされます)`)) return;
 
                 saveHistory();
+                conqueredStations = Array.from(new Set([...conqueredStations, ...newStations]));
+                localStorage.setItem('conqueredStations', JSON.stringify(conqueredStations));
+
+            } else {
+                // アプリ標準形式 (完全上書き)
+                if (!parsedData || !Array.isArray(parsedData.lines) || !Array.isArray(parsedData.stations)) {
+                    throw new Error('データ構造が正しくありません。');
+                }
+                newLines = parsedData.lines;
+                newStations = parsedData.stations;
                 
-                conqueredLines = importedData.lines;
-                conqueredStations = importedData.stations;
+                if (!confirm(`路線データ: ${newLines.length}件\n駅データ: ${newStations.length}件\n\nこのデータをマップに読み込みますか？現在の記録は上書きされます。`)) return;
+
+                saveHistory();
+                conqueredLines = newLines;
+                conqueredStations = newStations;
                 localStorage.setItem('conqueredLines', JSON.stringify(conqueredLines));
                 localStorage.setItem('conqueredStations', JSON.stringify(conqueredStations));
-                
-                refreshAllLines();
-                
-                alert('データのインポートが完了しました！');
-                closeModal();
             }
+            
+            recalculateConqueredLines();
+
+            refreshAllLines();
+            alert('データのインポートが完了しました！');
+            closeModal();
+            
         } catch (e) {
             alert('データの解析に失敗しました。正しいJSONテキストが入力されているか確認してください。\nエラー内容: ' + e.message);
         }
@@ -1021,7 +1173,6 @@ document.getElementById('btn-reset').addEventListener('click', function() {
         isDisplayInverted = false; document.getElementById('chk-invert').checked = false;
         currentMode = 'normal'; document.querySelectorAll('input[name="view-mode"]')[0].checked = true;
         
-        // リセット時もデフォルトである「眺めるモード」に戻るように修正
         document.querySelectorAll('input[name="reg-mode"]')[3].checked = true;
         updateRegisterMode('view');
 
