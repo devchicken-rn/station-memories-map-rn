@@ -20,8 +20,8 @@ const lineRenderer = L.canvas({ pane: 'linePane', tolerance: 10 });
 const stationRenderer = L.canvas({ pane: 'stationPane' });
 const viewRenderer = L.canvas({ pane: 'viewPane', tolerance: 15 }); // 👁️ 共通Canvas (吸い付きやすいようにtolerance初期値拡大)
 
-const lineListUrl = 'db_files/out/main/line.json';
-const stationListUrl = 'db_files/out/main/station.json';
+const lineListUrl = 'database_files/out/main/line.json';
+const stationListUrl = 'database_files/out/main/station.json';
 
 let conqueredLines = JSON.parse(localStorage.getItem('conqueredLines')) || [];
 let conqueredStations = JSON.parse(localStorage.getItem('conqueredStations')) || [];
@@ -625,7 +625,7 @@ function startApp() {
         updateSidebarList();
 
         lines.forEach(line => {
-            fetch(`db_files/out/main/polyline/${line.code}.json`).then(r => r.json()).then(geojsonData => {
+            fetch(`database_files/out/main/polyline/${line.code}.json`).then(r => r.json()).then(geojsonData => {
                 if (!isDrawingStarted && isStationsLoaded) {
                     isDrawingStarted = true;
                     updateStatusText('路線マップ描画中...');
