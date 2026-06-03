@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>駅メモ路線マップ（仮）</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="loading-overlay">
+        <div class="loading-title">Loading...</div>
+        <div class="loading-spinner"></div>
+        <div id="loading-status">データ準備中...</div>
+    </div>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <h3>🗺️ 路線一覧から制覇</h3>
+            <button id="btn-close-sidebar">✕</button>
+        </div>
+        <div class="sidebar-search-area">
+            <input type="text" id="sidebar-search" placeholder="🔍 路線名で検索... (例: 山手)">
+            <div id="search-result-stats">
+                全路線: <span id="filtered-conquered">0</span> / <span id="filtered-total">0</span> 本制覇
+            </div>
+        </div>
+        <div class="sidebar-content" id="sidebar-line-list"></div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="top-right-header">
+        <div id="mini-counter" title="クリックして都道府県別の進捗を表示">
+            <div class="counter-row">
+                <span>路線制覇:</span>
+                <span><span id="conquered-count" class="counter-val">0</span>/ <span id="total-count">0</span> 本</span>
+            </div>
+            <div class="counter-row">
+                <span>駅チェックイン:</span>
+                <span><span id="conquered-stations-count" class="counter-val" style="color: #00ffff;">0</span>/ <span id="total-stations-count">0</span> 駅</span>
+            </div>
+        </div>
+        <button id="btn-sidebar-toggle" title="路線リストを開く/閉じる">☰ 路線リスト</button>
+        <button id="btn-panel-toggle" title="設定を開く">⚙️</button>
+    </div>
+
+    <div id="counter-panel" class="closed">
+        <button id="btn-close-panel" title="閉じる">✕</button>
+        
+        <div style="color: #ffde59; font-size: 14px; letter-spacing: 1px; margin-bottom: 4px;">⚙️ MAP SETTINGS</div>
+        
+        <div class="mode-section" style="border-top: none; padding-top: 0; margin-top: 4px; background: rgba(78, 84, 200, 0.15); padding: 10px; border-radius: 8px; border: 1px dashed #4e54c8;">
+            <div class="mode-title" style="color: #ffde59; font-weight: bold;">👆 登録対象</div>
+            <div class="mode-options">
+                <label style="font-weight: bold; color: #00ffff;"><input type="radio" name="reg-mode" value="view" checked> 👀 眺める（登録なし）</label>
+                <label style="font-weight: bold;"><input type="radio" name="reg-mode" value="station"> 📍 駅単位</label>
+                <label style="font-weight: bold;"><input type="radio" name="reg-mode" value="line"> 🗺️ 路線で一括</label>
+                <label style="font-weight: bold;"><input type="radio" name="reg-mode" value="pref"> 🗾 都道府県単位で一括</label>
+            </div>
+        </div>
+
+        <div class="mode-section">
+            <div class="mode-title">🗺️ 表示モード</div>
+            <div class="mode-options">
+                <label><input type="radio" name="view-mode" value="normal" checked> 標準表示</label>
+                <label><input type="radio" name="view-mode" value="line-only"> 路線強調 (駅を隠す)</label>
+                <label><input type="radio" name="view-mode" value="station-heavy"> 駅強調 (路線を薄く)</label>
+                <label><input type="radio" name="view-mode" value="station-only"> 路線を隠す (駅のみ)</label>
+            </div>
+        </div>
+
+        <div class="mode-section">
+            <div class="mode-options">
+                <label style="color: #ffde59; font-weight: bold;"><input type="checkbox" id="chk-invert"> 🛠️ 未制覇の路線を強調する</label>
+            </div>
+        </div>
+
+        <div class="mode-section" style="border-top: 1px dashed #4e54c8; padding-top: 10px; margin-top: 10px;">
+            <div class="mode-options">
+                <label style="color: #00ffff; font-weight: bold;">
+                    <input type="checkbox" id="chk-voronoi"> 💠 ボロノイ図を表示
+                </label>
+            </div>
+        </div>
+
+        <div class="mode-section" style="border-top: 1px dashed #4e54c8; padding-top: 10px; margin-top: 10px;">
+            <div class="mode-title">💾 データバックアップ</div>
+            <div style="display: flex; gap: 8px;">
+                <button id="btn-export-show" style="flex: 1; background: #4e54c8; color: white; border: none; padding: 6px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">エクスポート</button>
+                <button id="btn-import-show" style="flex: 1; background: #2c2f54; color: #ffde59; border: 1px solid #4e54c8; padding: 6px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 12px;">インポート</button>
+            </div>
+        </div>
+
+        <div class="button-group">
+            <button id="btn-reset">データをリセットする</button>
+            <div style="font-size: 11px; color: #888; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px dashed rgba(78, 84, 200, 0.4); line-height: 1.4;">
+                駅・路線データ元：<br>
+                <a href="https://github.com/Seo-4d696b75/station_database" target="_blank" style="color: #ffde59; text-decoration: none;">station_database</a> by kaoru.senda様
+            </div>
+
+        </div>
+    </div>
+
+    <div id="pref-panel" class="closed">
+        <div class="pref-header">
+            <span>🗾 都道府県別登録数</span>
+            <button id="btn-pref-close" title="閉じる">✕</button>
+        </div>
+        <div class="pref-content" id="pref-list-container"></div>
+    </div>
+
+    <div id="data-modal" class="modal-overlay">
+        <div class="modal-window">
+            <div class="modal-header">
+                <span id="modal-window-title" class="modal-title">データ連携</span>
+                <button id="btn-modal-cancel" class="btn-modal-close">✕</button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-window-desc" class="modal-desc"></div>
+                <textarea id="txt-data-io" placeholder="ここにデータを貼り付けてください..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button id="btn-modal-execute" class="btn-modal-action">実行</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <script src="scripts.js"></script>
+</body>
+</html>
